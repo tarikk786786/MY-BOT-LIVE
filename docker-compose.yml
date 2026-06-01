@@ -1,0 +1,111 @@
+version: "3.9"
+
+# ──────────────────────────────────────────────────────────────
+#  CompanionAI — Full Local Stack
+#  Run: docker-compose up -d
+# ──────────────────────────────────────────────────────────────
+
+services:
+
+  # ─────────────────────────────
+  # MongoDB
+  # ─────────────────────────────
+  mongo:
+    image: mongo:7.0
+    container_name: companionai-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: companionai
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+    networks:
+      - companionai-net
+
+  # ─────────────────────────────
+  # Redis
+  # ─────────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    container_name: companionai-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - companionai-net
+
+  # ─────────────────────────────
+  # Backend API
+  # ─────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: companionai-backend
+    restart: unless-stopped
+    depends_on:
+      - mongo
+      - redis
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      MONGODB_URI: mongodb://mongo:27017/companionai
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret-in-production}
+      FRONTEND_URL: http://localhost:3000
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      AI_API_KEY: ${AI_API_KEY}
+      AI_MODEL: ${AI_MODEL:-gpt-4o}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+    volumes:
+      - wa_sessions:/app/sessions
+      - backend_logs:/app/logs
+    ports:
+      - "5000:5000"
+    networks:
+      - companionai-net
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5000/health', r => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ─────────────────────────────
+  # Frontend (Next.js)
+  # ─────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: companionai-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://localhost:5000
+    ports:
+      - "3000:3000"
+    networks:
+      - companionai-net
+
+# ─────────────────────────────
+# Volumes
+# ─────────────────────────────
+volumes:
+  mongo_data:
+  redis_data:
+  wa_sessions:
+  backend_logs:
+
+# ─────────────────────────────
+# Network
+# ─────────────────────────────
+networks:
+  companionai-net:
+    driver: bridge

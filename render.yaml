@@ -1,0 +1,110 @@
+services:
+  # ─────────────────────────────────────────
+  # BACKEND API + WhatsApp Engine
+  # ─────────────────────────────────────────
+  - type: web
+    name: companionai-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: MONGODB_URI
+        fromDatabase:
+          name: companionai-mongo
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: companionai-redis
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        fromService:
+          type: web
+          name: companionai-frontend
+          property: host
+          envVarKey: NEXT_PUBLIC_API_URL
+      - key: AI_PROVIDER
+        value: openai
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_MODEL
+        value: gpt-4o
+    disk:
+      name: whatsapp-sessions
+      mountPath: /app/sessions
+      sizeGB: 1
+    autoDeploy: true
+
+  # ─────────────────────────────────────────
+  # FRONTEND (Next.js)
+  # ─────────────────────────────────────────
+  - type: web
+    name: companionai-frontend
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: starter
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: companionai-backend
+          property: host
+    autoDeploy: true
+
+  # ─────────────────────────────────────────
+  # BACKGROUND WORKER (Keep-alive + Queue)
+  # ─────────────────────────────────────────
+  - type: worker
+    name: companionai-worker
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: WORKER_MODE
+        value: true
+      - key: MONGODB_URI
+        fromDatabase:
+          name: companionai-mongo
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: companionai-redis
+          property: connectionString
+      - key: BACKEND_URL
+        fromService:
+          type: web
+          name: companionai-backend
+          property: host
+    startCommand: node src/worker.js
+    disk:
+      name: worker-sessions
+      mountPath: /app/sessions
+      sizeGB: 1
+    autoDeploy: true
+
+# ─────────────────────────────────────────
+# DATABASES
+# ─────────────────────────────────────────
+databases:
+  - name: companionai-mongo
+    databaseName: companionai
+    plan: free
+
+  - name: companionai-redis
+    plan: free
