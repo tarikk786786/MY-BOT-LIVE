@@ -135,18 +135,18 @@ require('./services/socket/socketHandler')(io);
 // Keep-alive cron for Render free tier (every 14 minutes)
 cron.schedule('*/14 * * * *', () => {
   const https = require('https');
-  const url = process.env.RENDER_EXTERNAL_URL || \`http://localhost:\${process.env.PORT || 5000}\`;
+  const url = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 5000}`;
   
   if (url.startsWith('https')) {
-    https.get(\`\${url}/health\`, (res) => {
-      logger.info(\`Keep-alive ping: \${res.statusCode}\`);
+    https.get(`${url}/health`, (res) => {
+      logger.info(`Keep-alive ping: ${res.statusCode}`);
     }).on('error', (err) => {
       logger.warn('Keep-alive ping failed:', err.message);
     });
   } else {
     const http = require('http');
-    http.get(\`\${url}/health\`, (res) => {
-      logger.info(\`Keep-alive ping: \${res.statusCode}\`);
+    http.get(`${url}/health`, (res) => {
+      logger.info(`Keep-alive ping: ${res.statusCode}`);
     }).on('error', (err) => {
       logger.warn('Keep-alive ping failed:', err.message);
     });
