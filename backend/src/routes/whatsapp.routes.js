@@ -5,7 +5,9 @@ const authMiddleware = require('../middleware/auth');
 
 router.use(authMiddleware);
 router.get('/status', whatsappController.getStatus);
-router.post('/reconnect', whatsappController.reconnect);
+router.get('/qr', whatsappController.getQR);
+router.post('/restart', whatsappController.restart);
 router.post('/logout', whatsappController.logout);
+router.post('/send', whatsappController.sendMessage);
 
 module.exports = router;
