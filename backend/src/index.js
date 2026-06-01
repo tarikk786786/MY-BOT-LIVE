@@ -91,20 +91,55 @@ cron.schedule('*/14 * * * *', () => {
 
 const PORT = process.env.PORT || 5000;
 
+async function connectDB(retries = 5) {
+  if (!process.env.MONGODB_URI) {
+    logger.error('CRITICAL ERROR: MONGODB_URI environment variable is missing.');
+    logger.error('You MUST set MONGODB_URI to your MongoDB Atlas connection string in Render.');
+    process.exit(1);
+  }
+
+  while (retries > 0) {
+    try {
+      logger.info(`Attempting MongoDB connection... (${retries} retries left)`);
+      await mongoose.connect(process.env.MONGODB_URI);
+      logger.info('✅ MongoDB Atlas connected successfully');
+      return true;
+    } catch (err) {
+      logger.error('MongoDB connection error:', err.message);
+      retries -= 1;
+      if (retries === 0) {
+        logger.error('❌ Failed to connect to MongoDB after multiple attempts.');
+        process.exit(1);
+      }
+      logger.info('Retrying MongoDB connection in 5 seconds...');
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+  }
+}
+
 async function start() {
   try {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/whatsapp-ai');
-    logger.info('MongoDB connected');
+    // 1. Connect to Database FIRST
+    await connectDB();
 
+    // 2. Start Express Server
     server.listen(PORT, () => {
-      logger.info(`Server running on port ${PORT}`);
-      // Initialize WhatsApp after server starts
-      setTimeout(() => initWhatsApp(), 2000);
-      // Initialize Always-Live Ping
+      logger.info(`🚀 Server running on port ${PORT}`);
+      
+      // 3. Initialize WhatsApp Engine safely
+      setTimeout(() => {
+        try {
+          initWhatsApp();
+        } catch (e) {
+          logger.error('WhatsApp Init Error:', e.message);
+        }
+      }, 2000);
+      
+      // 4. Initialize Keep Alive
       initKeepAlive();
     });
   } catch (err) {
-    logger.error('Startup error:', err);
+    logger.error('Fatal Startup error:', err);
     process.exit(1);
   }
 }
