@@ -67,6 +67,59 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Root UI for QR Scanning
+app.get('/', async (req, res) => {
+  const { getStatus } = require('./services/whatsapp/WhatsAppManager');
+  const status = await getStatus();
+  
+  let content = '';
+  if (status.state === 'CONNECTED' || status.state === 'AUTHENTICATED') {
+    content = `
+      <div style="text-align: center; color: #10b981;">
+        <h2 style="font-size: 2rem;">✅ Bot is LIVE and Connected!</h2>
+        <p style="font-size: 1.2rem; color: #a1a1aa;">WhatsApp number: ${status.phone || 'Connected'}</p>
+      </div>
+    `;
+  } else if (status.qr) {
+    content = `
+      <div style="text-align: center;">
+        <h2 style="color: #3b82f6; font-size: 1.8rem; margin-bottom: 20px;">Scan to activate your Bot</h2>
+        <img src="${status.qr}" alt="QR Code" style="width: 300px; height: 300px; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);" />
+        <p style="margin-top: 20px; color: #a1a1aa;">Open WhatsApp > Settings > Linked Devices > Scan</p>
+      </div>
+    `;
+  } else {
+    content = `
+      <div style="text-align: center; color: #f59e0b;">
+        <h2 style="font-size: 1.8rem;">⏳ Starting up...</h2>
+        <p style="color: #a1a1aa;">Generating QR code, please refresh the page in 5 seconds.</p>
+        <p style="font-size: 0.9rem; color: #52525b;">Status: ${status.state}</p>
+      </div>
+    `;
+  }
+
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>WhatsApp AI Bot Status</title>
+      <style>
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #09090b; color: #fafafa; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+        .container { background: #18181b; padding: 40px; border-radius: 16px; border: 1px solid #27272a; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
+      </style>
+      ${(!status.connected && !status.qr) ? '<meta http-equiv="refresh" content="5">' : ''}
+    </head>
+    <body>
+      <div class="container">
+        ${content}
+      </div>
+    </body>
+    </html>
+  `);
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
