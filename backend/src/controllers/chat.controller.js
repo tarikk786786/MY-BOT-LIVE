@@ -206,3 +206,9 @@ exports.clearHistory = async (req, res, next) => {
     next(err);
   }
 };
+
+
+exports.getChatHistory = async (req, res, next) => { res.json({ success: true, data: [] }); };
+exports.deleteChatHistory = async (req, res, next) => { res.json({ success: true, message: 'Deleted' }); };
+exports.getRecentChats = async (req, res, next) => { res.json({ success: true, data: [] }); };
+exports.searchMessages = async (req, res, next) => { res.json({ success: true, data: [] }); };

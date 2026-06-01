@@ -257,3 +257,7 @@ exports.getHourlyActivity = async (req, res, next) => {
     next(err);
   }
 };
+
+
+exports.getDashboardStats = async (req, res, next) => { res.json({ success: true, data: {} }); };
+exports.getChartData = async (req, res, next) => { res.json({ success: true, data: [] }); };

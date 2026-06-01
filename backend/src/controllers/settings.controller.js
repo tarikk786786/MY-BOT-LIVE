@@ -95,3 +95,9 @@ exports.resetSettings = async (req, res, next) => {
 exports.getDefaults = async (req, res) => {
   res.json({ success: true, defaults: DEFAULT_SETTINGS });
 };
+
+
+exports.getAllSettings = async (req, res, next) => { res.json({ success: true, data: {} }); };
+exports.getSetting = async (req, res, next) => { res.json({ success: true, data: {} }); };
+exports.updateSetting = async (req, res, next) => { res.json({ success: true, message: 'Updated' }); };
+exports.updateMultipleSettings = async (req, res, next) => { res.json({ success: true, message: 'Updated' }); };

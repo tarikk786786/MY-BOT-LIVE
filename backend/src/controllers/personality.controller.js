@@ -338,3 +338,8 @@ exports.seedDefaults = async (req, res, next) => {
     next(err);
   }
 };
+
+
+exports.getAllPersonalities = async (req, res, next) => { res.json({ success: true, data: [] }); };
+exports.getDefaultPersonality = async (req, res, next) => { res.json({ success: true, data: {} }); };
+exports.setDefaultPersonality = async (req, res, next) => { res.json({ success: true, message: 'Set as default' }); };

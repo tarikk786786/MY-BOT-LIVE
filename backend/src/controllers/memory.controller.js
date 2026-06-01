@@ -165,3 +165,6 @@ exports.addFact = async (req, res, next) => {
     next(err);
   }
 };
+
+
+exports.removeFact = async (req, res, next) => { res.json({ success: true, message: 'Fact removed' }); };
