@@ -1,8 +1,8 @@
 version: "3.9"
 
 # ──────────────────────────────────────────────────────────────
-#  CompanionAI — Full Local Stack
-#  Run: docker-compose up -d
+#  CompanionAI — Production Server Stack
+#  Run: docker-compose up -d --build
 # ──────────────────────────────────────────────────────────────
 
 services:
@@ -39,7 +39,7 @@ services:
       - companionai-net
 
   # ─────────────────────────────
-  # Backend API
+  # Backend API + Queue Processor
   # ─────────────────────────────
   backend:
     build:
@@ -50,17 +50,13 @@ services:
     depends_on:
       - mongo
       - redis
+    env_file:
+      - .env
     environment:
       NODE_ENV: production
       PORT: 5000
       MONGODB_URI: mongodb://mongo:27017/companionai
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET:-change-this-secret-in-production}
-      FRONTEND_URL: http://localhost:3000
-      AI_PROVIDER: ${AI_PROVIDER:-openai}
-      AI_API_KEY: ${AI_API_KEY}
-      AI_MODEL: ${AI_MODEL:-gpt-4o}
-      AI_BASE_URL: ${AI_BASE_URL:-}
     volumes:
       - wa_sessions:/app/sessions
       - backend_logs:/app/logs
@@ -82,13 +78,16 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5000}
     container_name: companionai-frontend
     restart: unless-stopped
     depends_on:
       - backend
+    env_file:
+      - .env
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_API_URL: http://localhost:5000
     ports:
       - "3000:3000"
     networks:
