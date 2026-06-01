@@ -4,29 +4,37 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        dark: {
-          DEFAULT: '#0a0a0f',
-          800: '#0f0f1a',
-          700: '#14141f',
-          600: '#1a1a2e',
+        obsidian: {
+          DEFAULT: '#050505',
+          900: '#0a0a0f',
+          800: '#0f0f14',
+          700: '#14141a',
         },
-        accent: {
-          green: '#00d084',
-          purple: '#7c3aed',
+        emerald: {
+          glow: '#10b981',
+          dark: '#059669',
         },
+        amethyst: {
+          glow: '#8b5cf6',
+          dark: '#7c3aed',
+        },
+        silver: {
+          DEFAULT: '#a1a1aa',
+          light: '#e4e4e7',
+        }
       },
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
-        display: ['Sora', 'sans-serif'],
+        display: ['Outfit', 'sans-serif'],
       },
       animation: {
         'pulse-slow': 'pulse 3s infinite',
-        gradient: 'gradient 8s ease infinite',
+        'gradient-shift': 'gradient-shift 8s ease infinite',
         'float': 'float 6s ease-in-out infinite',
-        'shimmer': 'shimmer 2s infinite',
+        'aurora': 'aurora 15s linear infinite',
       },
       keyframes: {
-        gradient: {
+        'gradient-shift': {
           '0%, 100%': { backgroundPosition: '0% 50%' },
           '50%': { backgroundPosition: '100% 50%' },
         },
@@ -34,14 +42,20 @@ module.exports = {
           '0%, 100%': { transform: 'translateY(0px)' },
           '50%': { transform: 'translateY(-10px)' },
         },
-        shimmer: {
-          '0%': { backgroundPosition: '-200% 0' },
-          '100%': { backgroundPosition: '200% 0' },
-        },
+        aurora: {
+          '0%': { backgroundPosition: '50% 50%, 50% 50%' },
+          '100%': { backgroundPosition: '350% 50%, 350% 50%' },
+        }
       },
       backdropBlur: {
         xs: '2px',
+        glass: '24px',
       },
+      boxShadow: {
+        'glow-emerald': '0 0 40px -10px rgba(16, 185, 129, 0.3)',
+        'glow-amethyst': '0 0 40px -10px rgba(139, 92, 246, 0.3)',
+        'glass-inset': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.05)',
+      }
     },
   },
   plugins: [],

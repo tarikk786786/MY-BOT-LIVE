@@ -1,69 +1,32 @@
 'use client';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuthStore, useWAStore } from '@/lib/store';
+import { usePathname } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 import TopBar from '@/components/layout/TopBar';
-import { connectSocket, disconnectSocket } from '@/lib/socket';
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const token = useAuthStore((s) => s.token);
-  const router = useRouter();
-  const setStatus = useWAStore((s) => s.setStatus);
-
-  // Auth guard
-  useEffect(() => {
-    const stored =
-      typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    if (!token && !stored) {
-      router.push('/login');
-    }
-  }, [token, router]);
-
-  // Socket connection
-  useEffect(() => {
-    const socket = connectSocket();
-
-    socket.on('wa:ready', (data: any) =>
-      setStatus({ connected: true, phone: data?.phone || null, qr: null })
-    );
-    socket.on('wa:disconnected', () =>
-      setStatus({ connected: false, qr: null, phone: null })
-    );
-    socket.on('wa:qr', (data: any) =>
-      setStatus({ connected: false, qr: data?.qr || null, phone: null })
-    );
-    socket.on('wa:loading_screen', () =>
-      setStatus({ connected: false, qr: null })
-    );
-
-    return () => {
-      socket.off('wa:ready');
-      socket.off('wa:disconnected');
-      socket.off('wa:qr');
-      socket.off('wa:loading_screen');
-      disconnectSocket();
-    };
-  }, [setStatus]);
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
 
   return (
-    <div
-      className="flex h-screen overflow-hidden"
-      style={{ background: 'var(--bg-primary)' }}
-    >
-      <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <TopBar />
-        <main
-          className="flex-1 overflow-auto"
-          style={{ background: 'var(--bg-primary)' }}
-        >
-          {children}
-        </main>
+    <div className="min-h-screen relative overflow-hidden flex bg-obsidian text-main">
+      {/* Mesh Background */}
+      <div className="mesh-bg">
+        <div className="mesh-orb-1" />
+        <div className="mesh-orb-2" />
+      </div>
+
+      {/* Floating Sidebar Container */}
+      <div className="fixed top-0 left-0 h-full p-4 lg:p-6 z-50">
+        <Sidebar currentPath={pathname} />
+      </div>
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col pl-[100px] lg:pl-[280px] min-h-screen transition-all duration-300">
+        <div className="p-4 lg:p-6 flex-1 flex flex-col max-w-[1600px] mx-auto w-full relative z-10">
+          <TopBar />
+          <main className="flex-1 pt-6">
+            {children}
+          </main>
+        </div>
       </div>
     </div>
   );
