@@ -15,9 +15,7 @@ services:
       - key: PORT
         value: 5000
       - key: MONGODB_URI
-        fromDatabase:
-          name: companionai-mongo
-          property: connectionString
+        sync: false # You must paste your MongoDB Atlas URI here in the Render dashboard
       - key: REDIS_URL
         fromService:
           type: redis
@@ -26,11 +24,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: FRONTEND_URL
-        fromService:
-          type: web
-          name: companionai-frontend
-          property: host
-          envVarKey: NEXT_PUBLIC_API_URL
+        value: https://companionai-frontend.onrender.com
       - key: AI_PROVIDER
         value: openai
       - key: AI_API_KEY
@@ -57,10 +51,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: NEXT_PUBLIC_API_URL
-        fromService:
-          type: web
-          name: companionai-backend
-          property: host
+        value: https://companionai-backend.onrender.com
     autoDeploy: true
 
   # ─────────────────────────────────────────
@@ -78,19 +69,14 @@ services:
       - key: WORKER_MODE
         value: true
       - key: MONGODB_URI
-        fromDatabase:
-          name: companionai-mongo
-          property: connectionString
+        sync: false # Paste same MongoDB Atlas URI here
       - key: REDIS_URL
         fromService:
           type: redis
           name: companionai-redis
           property: connectionString
       - key: BACKEND_URL
-        fromService:
-          type: web
-          name: companionai-backend
-          property: host
+        value: https://companionai-backend.onrender.com
     startCommand: node src/worker.js
     disk:
       name: worker-sessions
@@ -102,9 +88,6 @@ services:
 # DATABASES
 # ─────────────────────────────────────────
 databases:
-  - name: companionai-mongo
-    databaseName: companionai
-    plan: free
-
   - name: companionai-redis
+    type: redis
     plan: free
