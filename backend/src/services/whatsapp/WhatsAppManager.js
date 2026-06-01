@@ -19,7 +19,6 @@ function createClient() {
     authStrategy: new LocalAuth({
       dataPath: process.env.WA_SESSION_PATH || './sessions',
     }),
-    webVersionCache: { type: 'local' },
     puppeteer: {
       headless: true,
       args: [
@@ -33,11 +32,6 @@ function createClient() {
         '--disable-extensions',
         '--disable-software-rasterizer',
         '--disable-background-networking',
-        '--disable-background-timer-throttling',
-        '--disable-client-side-phishing-detection',
-        '--disable-default-apps',
-        '--disable-features=site-per-process,Translate,BlinkGenPropertyTrees',
-        '--js-flags="--max-old-space-size=256 --expose-gc"',
       ],
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     },
