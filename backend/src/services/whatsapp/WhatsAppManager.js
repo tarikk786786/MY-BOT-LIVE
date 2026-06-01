@@ -19,6 +19,7 @@ function createClient() {
     authStrategy: new LocalAuth({
       dataPath: process.env.WA_SESSION_PATH || './sessions',
     }),
+    webVersionCache: { type: 'local' },
     puppeteer: {
       headless: true,
       args: [

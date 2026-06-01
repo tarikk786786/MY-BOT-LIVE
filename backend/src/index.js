@@ -110,7 +110,7 @@ app.get('/', async (req, res) => {
         body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #09090b; color: #fafafa; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
         .container { background: #18181b; padding: 40px; border-radius: 16px; border: 1px solid #27272a; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
       </style>
-      ${(!status.connected && !status.qr) ? '<meta http-equiv="refresh" content="5">' : ''}
+      ${(!status.connected) ? '<meta http-equiv="refresh" content="2">' : ''}
     </head>
     <body>
       <div class="container">
@@ -134,13 +134,23 @@ require('./services/socket/socketHandler')(io);
 
 // Keep-alive cron for Render free tier (every 14 minutes)
 cron.schedule('*/14 * * * *', () => {
-  const http = require('http');
-  const port = process.env.PORT || 5000;
-  http.get(`http://localhost:${port}/health`, (res) => {
-    logger.info(`Keep-alive ping: ${res.statusCode}`);
-  }).on('error', (err) => {
-    logger.warn('Keep-alive ping failed:', err.message);
-  });
+  const https = require('https');
+  const url = process.env.RENDER_EXTERNAL_URL || \`http://localhost:\${process.env.PORT || 5000}\`;
+  
+  if (url.startsWith('https')) {
+    https.get(\`\${url}/health\`, (res) => {
+      logger.info(\`Keep-alive ping: \${res.statusCode}\`);
+    }).on('error', (err) => {
+      logger.warn('Keep-alive ping failed:', err.message);
+    });
+  } else {
+    const http = require('http');
+    http.get(\`\${url}/health\`, (res) => {
+      logger.info(\`Keep-alive ping: \${res.statusCode}\`);
+    }).on('error', (err) => {
+      logger.warn('Keep-alive ping failed:', err.message);
+    });
+  }
 });
 
 const PORT = process.env.PORT || 5000;
