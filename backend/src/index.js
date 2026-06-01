@@ -56,6 +56,7 @@ app.use('/api/personality', require('./routes/personality.routes'));
 app.use('/api/settings', require('./routes/settings.routes'));
 app.use('/api/analytics', require('./routes/analytics.routes'));
 app.use('/api/messages', require('./routes/messages.routes'));
+app.use('/api/brain', require('./routes/brain.routes'));
 
 // Health check
 app.get('/health', (req, res) => {

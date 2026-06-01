@@ -53,13 +53,25 @@ async function processMessage(msgData) {
         contactName,
         body: messageBody,
         timestamp: new Date(),
+        type: type
       });
     }
 
-    // Skip AI reply for non-text messages unless body exists
-    if (!messageBody.trim() && type !== 'chat') {
-      logger.info(`Skipping non-text message from ${contactId} (type: ${type})`);
+    // Skip AI reply for non-text messages if we don't have media
+    if (!messageBody.trim() && type !== 'chat' && type !== 'ptt' && type !== 'image') {
+      logger.info(`Skipping unsupported non-text message from ${contactId} (type: ${type})`);
       return;
+    }
+
+    let finalPrompt = messageBody;
+    
+    // Multi-Modal Handling Stub
+    if (type === 'ptt') {
+      finalPrompt = '[User sent a voice note. Voice processing via Whisper API is queued for future release.]';
+      logger.info('Voice Note received, routing to audio processor (Stub)');
+    } else if (type === 'image') {
+      finalPrompt = '[User sent an image. Image processing via Vision API is queued for future release.]';
+      logger.info('Image received, routing to vision processor (Stub)');
     }
 
     // Detect emotion
@@ -97,9 +109,9 @@ async function processMessage(msgData) {
       .lean();
     const orderedHistory = history.reverse();
 
-    // Generate AI reply
+    // Generate AI reply via Multi-AI Brain
     const reply = await AIEngine.generateReply(
-      messageBody,
+      finalPrompt,
       memory,
       personality,
       orderedHistory
