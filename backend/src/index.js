@@ -11,6 +11,8 @@ const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const cron = require('node-cron');
 const logger = require('./utils/logger');
+const { initWhatsApp } = require('./services/whatsapp/WhatsAppManager');
+const { initKeepAlive } = require('./utils/keepAlive');
 
 const app = express();
 const server = http.createServer(app);
@@ -97,10 +99,9 @@ async function start() {
     server.listen(PORT, () => {
       logger.info(`Server running on port ${PORT}`);
       // Initialize WhatsApp after server starts
-      setTimeout(() => {
-        const { initWhatsApp } = require('./services/whatsapp/WhatsAppManager');
-        initWhatsApp();
-      }, 2000);
+      setTimeout(() => initWhatsApp(), 2000);
+      // Initialize Always-Live Ping
+      initKeepAlive();
     });
   } catch (err) {
     logger.error('Startup error:', err);
