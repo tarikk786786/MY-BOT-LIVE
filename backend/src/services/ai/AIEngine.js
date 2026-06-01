@@ -8,7 +8,7 @@ const PROVIDERS = {
   },
   groq: {
     baseURL: 'https://api.groq.com/openai/v1',
-    defaultModel: 'llama3-70b-8192',
+    defaultModel: 'llama3-8b-8192',
   },
   together: {
     baseURL: 'https://api.together.xyz/v1',
@@ -16,7 +16,15 @@ const PROVIDERS = {
   },
   openrouter: {
     baseURL: 'https://openrouter.ai/api/v1',
-    defaultModel: 'anthropic/claude-3-haiku',
+    defaultModel: 'minimax/minimax-m2.5:free',
+  },
+  mistral: {
+    baseURL: 'https://api.mistral.ai/v1',
+    defaultModel: 'mistral-large-latest',
+  },
+  huggingface: {
+    baseURL: 'https://api-inference.huggingface.co/v1',
+    defaultModel: 'meta-llama/Meta-Llama-3-8B-Instruct',
   },
 };
 
@@ -24,16 +32,27 @@ let _client = null;
 let _lastProvider = null;
 
 function getClient() {
-  const provider = process.env.AI_PROVIDER || 'openai';
-  const config = PROVIDERS[provider] || PROVIDERS.openai;
+  const provider = process.env.AI_PROVIDER || 'openrouter';
+  const config = PROVIDERS[provider] || PROVIDERS.openrouter;
 
   // Re-use client unless provider changed
   if (_client && _lastProvider === provider) {
-    return { client: _client, model: process.env.AI_MODEL || config.defaultModel };
+    return { client: _client, model: resolveModel(provider, config) };
+  }
+
+  let apiKey = process.env.AI_API_KEY;
+  if (provider === 'mistral') apiKey = process.env.MISTRAL_API_KEY || apiKey;
+  if (provider === 'huggingface') {
+    try {
+      const hfConfig = require('../../config');
+      apiKey = hfConfig.HF_API_KEY || apiKey;
+    } catch (e) {
+      apiKey = process.env.HF_API_KEY || apiKey;
+    }
   }
 
   _client = new OpenAI({
-    apiKey: process.env.AI_API_KEY || 'no-key',
+    apiKey: apiKey || 'no-key',
     baseURL: config.baseURL,
     defaultHeaders: provider === 'openrouter' ? {
       'HTTP-Referer': process.env.FRONTEND_URL || 'http://localhost:3000',
@@ -42,7 +61,14 @@ function getClient() {
   });
   _lastProvider = provider;
 
-  return { client: _client, model: process.env.AI_MODEL || config.defaultModel };
+  return { client: _client, model: resolveModel(provider, config) };
+}
+
+function resolveModel(provider, config) {
+  if (provider === 'mistral' && process.env.MISTRAL_AGENT_ID) {
+    return process.env.MISTRAL_AGENT_ID;
+  }
+  return process.env.AI_MODEL || config.defaultModel;
 }
 
 /**
