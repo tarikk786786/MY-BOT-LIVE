@@ -19,8 +19,11 @@ COPY package*.json ./
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
+# Ensure git is available (needed for GitHub deps in package.json)
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies
-RUN npm install --only=production
+RUN npm install --omit=dev
 
 # Copy source code
 COPY . .
