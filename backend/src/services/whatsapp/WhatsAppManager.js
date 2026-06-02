@@ -1,23 +1,16 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
 const logger = require('../../utils/logger');
 
-// Clear stale WA web cache on startup to prevent auth loops
-function clearWWebCache() {
-  const cachePath = path.join(process.cwd(), '.wwebjs_cache');
-  try {
-    if (fs.existsSync(cachePath)) {
-      fs.rmSync(cachePath, { recursive: true, force: true });
-      logger.info('Cleared old .wwebjs_cache');
-    }
-  } catch (e) {
-    logger.warn('Could not clear wwebjs cache:', e.message);
-  }
-}
+// Use a minimal pino logger for Baileys internals
+const pino = require('pino');
+const baileysLogger = pino({ level: 'silent' });
 
-let client = null;
+const AUTH_DIR = path.join(process.cwd(), 'sessions', 'baileys_auth');
+
+let sock = null;
 let waStatus = {
   connected: false,
   qr: null,
@@ -27,201 +20,218 @@ let waStatus = {
   state: 'DISCONNECTED',
 };
 let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 10;
+const MAX_RECONNECT_ATTEMPTS = 15;
 
-function createClient() {
-  client = new Client({
-    authStrategy: new LocalAuth({
-      dataPath: process.env.WA_SESSION_PATH || './sessions',
-    }),
-    puppeteer: {
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-gpu',
-        '--disable-extensions',
-        '--disable-software-rasterizer',
-      ],
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+async function createClient() {
+  // Ensure auth directory exists
+  if (!fs.existsSync(AUTH_DIR)) {
+    fs.mkdirSync(AUTH_DIR, { recursive: true });
+  }
+
+  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  const { version } = await fetchLatestBaileysVersion();
+
+  logger.info(`Using Baileys v${version.join('.')} (WebSocket, no Chrome needed)`);
+
+  sock = makeWASocket({
+    version,
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, baileysLogger),
     },
+    logger: baileysLogger,
+    printQRInTerminal: false,
+    browser: ['WhatsApp AI Bot', 'Chrome', '120.0.0'],
+    connectTimeoutMs: 60000,
+    defaultQueryTimeoutMs: 0,
+    keepAliveIntervalMs: 25000,
+    markOnlineOnConnect: true,
+    generateHighQualityLinkPreview: false,
   });
 
-  client.on('qr', async (qr) => {
-    logger.info('QR Code generated — scan it in the dashboard');
-    try {
-      const qrDataUrl = await qrcode.toDataURL(qr);
-      waStatus.qr = qrDataUrl;
-      waStatus.connected = false;
-      waStatus.state = 'QR_READY';
-      if (global.io) global.io.emit('wa:qr', { qr: qrDataUrl });
-    } catch (err) {
-      logger.error('QR generation error:', err);
+  // Save credentials whenever they update
+  sock.ev.on('creds.update', saveCreds);
+
+  // Connection updates (QR, open, close)
+  sock.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect, qr } = update;
+
+    // QR code received
+    if (qr) {
+      logger.info('QR Code generated — scan it in the dashboard');
+      try {
+        const qrDataUrl = await qrcode.toDataURL(qr);
+        waStatus.qr = qrDataUrl;
+        waStatus.connected = false;
+        waStatus.state = 'QR_READY';
+        if (global.io) global.io.emit('wa:qr', { qr: qrDataUrl });
+      } catch (err) {
+        logger.error('QR generation error:', err);
+      }
     }
-  });
 
-  client.on('ready', async () => {
-    logger.info('WhatsApp connected successfully!');
-    reconnectAttempts = 0;
-    try {
-      const info = client.info;
+    // Connection opened
+    if (connection === 'open') {
+      logger.info('✅ WhatsApp connected successfully!');
+      reconnectAttempts = 0;
+      const phone = sock.user?.id?.split(':')[0] || sock.user?.id?.split('@')[0] || null;
       waStatus = {
         connected: true,
         qr: null,
-        phone: info?.wid?.user || null,
+        phone,
         battery: null,
         lastConnected: new Date(),
         state: 'CONNECTED',
-        pushname: info?.pushname || null,
+        pushname: sock.user?.name || null,
       };
-    } catch (e) {
-      waStatus.connected = true;
-      waStatus.state = 'CONNECTED';
+      if (global.io) global.io.emit('wa:ready', waStatus);
+    }
+
+    // Connection closed
+    if (connection === 'close') {
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+
+      logger.warn(`WhatsApp disconnected (code: ${statusCode})`);
+      waStatus.connected = false;
       waStatus.qr = null;
-    }
-    if (global.io) global.io.emit('wa:ready', waStatus);
-  });
 
-  client.on('authenticated', () => {
-    logger.info('WhatsApp authenticated');
-    waStatus.state = 'AUTHENTICATED';
-    if (global.io) global.io.emit('wa:authenticated', {});
-  });
-
-  client.on('auth_failure', (msg) => {
-    logger.error('WhatsApp auth failure:', msg);
-    waStatus.connected = false;
-    waStatus.state = 'AUTH_FAILED';
-    if (global.io) global.io.emit('wa:auth_failure', { msg });
-  });
-
-  client.on('disconnected', (reason) => {
-    logger.warn(`WhatsApp disconnected: ${reason}`);
-    waStatus.connected = false;
-    waStatus.state = 'DISCONNECTED';
-    waStatus.qr = null;
-    if (global.io) global.io.emit('wa:disconnected', { reason });
-
-    // Exponential backoff reconnect
-    if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-      const delay = Math.min(5000 * Math.pow(1.5, reconnectAttempts), 60000);
-      reconnectAttempts++;
-      logger.info(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
-      setTimeout(() => initWhatsApp(), delay);
-    } else {
-      logger.error('Max reconnect attempts reached. Manual restart required.');
-      if (global.io) global.io.emit('wa:max_reconnect', {});
-    }
-  });
-
-  client.on('message', async (msg) => {
-    // Skip group messages unless enabled
-    if (msg.isGroupMsg) {
-      const Settings = require('../../models/Settings');
-      const groupEnabled = await Settings.get('allowGroupMessages');
-      if (!groupEnabled) return;
-    }
-
-    // Skip status messages
-    if (msg.from === 'status@broadcast') return;
-
-    logger.info(`Incoming message from ${msg.from}: ${(msg.body || '').substring(0, 60)}`);
-
-    if (global.io) {
-      global.io.emit('wa:message', {
-        from: msg.from,
-        body: msg.body,
-        type: msg.type,
-        timestamp: msg.timestamp,
-        isGroupMsg: msg.isGroupMsg,
-      });
-    }
-
-    try {
-      const { processIncomingMessage } = require('../queue/MessageQueue');
-      await processIncomingMessage(msg, client);
-    } catch (err) {
-      logger.error('Error dispatching incoming message:', err);
-    }
-  });
-
-  client.on('message_create', async (msg) => {
-    // Log outgoing messages sent from the phone itself
-    if (msg.fromMe && !msg.from === 'status@broadcast') {
-      if (global.io) {
-        global.io.emit('wa:message_sent', {
-          to: msg.to,
-          body: msg.body,
-          timestamp: msg.timestamp,
-        });
+      if (statusCode === DisconnectReason.loggedOut) {
+        // Clear auth data on logout
+        logger.info('Logged out — clearing session data');
+        waStatus.state = 'LOGGED_OUT';
+        try {
+          fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+        } catch (e) {}
+        if (global.io) global.io.emit('wa:disconnected', { reason: 'Logged out' });
+        // Restart to show fresh QR
+        setTimeout(() => initWhatsApp(), 3000);
+      } else if (shouldReconnect && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        waStatus.state = 'RECONNECTING';
+        const delay = Math.min(3000 * Math.pow(1.3, reconnectAttempts), 30000);
+        reconnectAttempts++;
+        logger.info(`Reconnecting in ${Math.round(delay / 1000)}s (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+        if (global.io) global.io.emit('wa:disconnected', { reason: `Reconnecting... (${reconnectAttempts})` });
+        setTimeout(() => initWhatsApp(), delay);
+      } else {
+        waStatus.state = 'DISCONNECTED';
+        logger.error('Max reconnect attempts reached or logged out');
+        if (global.io) global.io.emit('wa:max_reconnect', {});
       }
     }
   });
 
-  client.on('change_battery', (batteryInfo) => {
-    waStatus.battery = batteryInfo;
-    if (global.io) global.io.emit('wa:battery', batteryInfo);
-  });
+  // Incoming messages
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (type !== 'notify') return;
 
-  client.initialize().catch((err) => {
-    logger.error('WhatsApp initialization error:', err.message);
-    waStatus.state = 'ERROR';
-    const delay = Math.min(10000 * Math.pow(1.5, reconnectAttempts), 60000);
-    reconnectAttempts++;
-    setTimeout(() => initWhatsApp(), delay);
+    for (const msg of messages) {
+      try {
+        // Skip own messages
+        if (msg.key.fromMe) continue;
+
+        // Skip status broadcast
+        if (msg.key.remoteJid === 'status@broadcast') continue;
+
+        // Skip group messages unless enabled
+        const isGroup = msg.key.remoteJid?.endsWith('@g.us');
+        if (isGroup) {
+          const Settings = require('../../models/Settings');
+          const groupEnabled = await Settings.get('allowGroupMessages');
+          if (!groupEnabled) continue;
+        }
+
+        const from = msg.key.remoteJid;
+        const body = msg.message?.conversation
+          || msg.message?.extendedTextMessage?.text
+          || msg.message?.imageMessage?.caption
+          || msg.message?.videoMessage?.caption
+          || '';
+        const messageType = Object.keys(msg.message || {})[0] || 'conversation';
+
+        logger.info(`Incoming message from ${from}: ${body.substring(0, 60)}`);
+
+        if (global.io) {
+          global.io.emit('wa:message', {
+            from,
+            body,
+            type: messageType,
+            timestamp: msg.messageTimestamp,
+            isGroupMsg: isGroup,
+          });
+        }
+
+        // Build a compatible message object for MessageQueue
+        const compatMsg = {
+          from,
+          body,
+          timestamp: msg.messageTimestamp,
+          type: mapBaileysType(messageType),
+          id: { _serialized: msg.key.id },
+          _data: { notifyName: msg.pushName || null },
+          isGroupMsg: isGroup || false,
+        };
+
+        const { processIncomingMessage } = require('../queue/MessageQueue');
+        await processIncomingMessage(compatMsg, sock);
+      } catch (err) {
+        logger.error('Error processing incoming message:', err.message);
+      }
+    }
   });
 }
 
+function mapBaileysType(type) {
+  if (type === 'conversation' || type === 'extendedTextMessage') return 'chat';
+  if (type === 'audioMessage') return 'ptt';
+  if (type === 'imageMessage') return 'image';
+  if (type === 'videoMessage' || type === 'documentMessage') return 'document';
+  if (type === 'stickerMessage') return 'sticker';
+  return 'chat';
+}
+
 async function initWhatsApp() {
-  logger.info('Initializing WhatsApp client...');
+  logger.info('Initializing WhatsApp client (Baileys)...');
   try {
-    if (client) {
+    if (sock) {
       try {
-        await client.destroy();
-        logger.info('Previous client destroyed');
+        sock.end(undefined);
+        logger.info('Previous socket closed');
       } catch (e) {
-        logger.warn('Could not destroy previous client:', e.message);
+        logger.warn('Could not close previous socket:', e.message);
       }
-      client = null;
+      sock = null;
     }
-    clearWWebCache();
-    createClient();
+    await createClient();
   } catch (err) {
-    logger.error('WhatsApp reinit error:', err);
-    setTimeout(() => initWhatsApp(), 15000);
+    logger.error('WhatsApp init error:', err.message);
+    setTimeout(() => initWhatsApp(), 10000);
   }
 }
 
 async function sendMessage(to, message) {
-  if (!client || !waStatus.connected) {
+  if (!sock || !waStatus.connected) {
     throw new Error('WhatsApp not connected');
   }
-  const chatId = to.includes('@c.us') ? to : `${to}@c.us`;
-  return client.sendMessage(chatId, message);
+  const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+  await sock.sendMessage(jid, { text: message });
 }
 
 async function sendTyping(to) {
   try {
-    if (!client || !waStatus.connected) return;
-    const chatId = to.includes('@c.us') ? to : `${to}@c.us`;
-    const chat = await client.getChatById(chatId);
-    await chat.sendStateTyping();
+    if (!sock || !waStatus.connected) return;
+    const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+    await sock.sendPresenceUpdate('composing', jid);
   } catch (e) {
-    // Typing indicator failures are non-critical
+    // Non-critical
   }
 }
 
 async function stopTyping(to) {
   try {
-    if (!client || !waStatus.connected) return;
-    const chatId = to.includes('@c.us') ? to : `${to}@c.us`;
-    const chat = await client.getChatById(chatId);
-    await chat.clearState();
+    if (!sock || !waStatus.connected) return;
+    const jid = to.includes('@') ? to : `${to}@s.whatsapp.net`;
+    await sock.sendPresenceUpdate('paused', jid);
   } catch (e) {
     // Non-critical
   }
@@ -232,7 +242,7 @@ async function getStatus() {
 }
 
 function getClient() {
-  return client;
+  return sock;
 }
 
 async function restartWhatsApp() {
@@ -241,17 +251,21 @@ async function restartWhatsApp() {
 }
 
 async function logoutWhatsApp() {
-  if (client) {
+  if (sock) {
     try {
-      await client.logout();
+      await sock.logout();
     } catch (e) {
       logger.warn('Logout error:', e.message);
     }
     try {
-      await client.destroy();
+      sock.end(undefined);
     } catch (e) {}
-    client = null;
+    sock = null;
   }
+  // Clear auth
+  try {
+    fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+  } catch (e) {}
   waStatus = { connected: false, qr: null, phone: null, battery: null, lastConnected: null, state: 'LOGGED_OUT' };
   if (global.io) global.io.emit('wa:disconnected', { reason: 'Logged out' });
 }
