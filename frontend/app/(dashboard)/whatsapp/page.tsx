@@ -25,6 +25,8 @@ export default function WhatsAppPage() {
   const { status } = useWAStore();
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState<'restart' | 'logout' | null>(null);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
 
   const { data: apiStatus, isLoading } = useQuery({
     queryKey: ['wa-status'],
@@ -45,8 +47,22 @@ export default function WhatsAppPage() {
       toast.success('WhatsApp client restarting...');
       queryClient.invalidateQueries({ queryKey: ['wa-status'] });
       setConfirming(null);
+      setPairingCode(null);
     },
     onError: () => toast.error('Failed to restart'),
+  });
+
+  const pairingMutation = useMutation({
+    mutationFn: (phone: string) => whatsappApi.requestPairingCode(phone).then(r => r.data),
+    onSuccess: (data) => {
+      if (data.code) {
+        setPairingCode(data.code);
+        toast.success('Pairing code generated!');
+      } else {
+        toast.error('Failed to generate pairing code');
+      }
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'Failed to generate code'),
   });
 
   const logoutMutation = useMutation({
@@ -164,48 +180,152 @@ export default function WhatsAppPage() {
           <p className="text-sm" style={{ color: '#475569' }}>
             {isConnected
               ? 'WhatsApp is active and processing messages'
-              : qrCode
+              : (qrCode || pairingCode)
               ? 'Open WhatsApp on your phone → More Options → Linked Devices → Link a Device'
               : 'WhatsApp is not connected. Click restart to reconnect.'}
           </p>
         </div>
 
-        {/* QR Code */}
-        <AnimatePresence>
-          {!isConnected && qrCode && (
+        {/* Auth Methods (QR or Pairing Code) */}
+        <AnimatePresence mode="wait">
+          {!isConnected && !pairingCode && (
             <motion.div
+              key="auth-options"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="rounded-2xl p-6 flex flex-col items-center gap-4"
+              className="grid md:grid-cols-2 gap-6"
+            >
+              {/* QR Code Section */}
+              <div
+                className="rounded-2xl p-6 flex flex-col items-center gap-4"
+                style={{
+                  background: 'rgba(15,15,26,0.8)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                }}
+              >
+                <h3
+                  className="text-lg font-semibold"
+                  style={{ fontFamily: 'Sora, sans-serif', color: '#e2e8f0' }}
+                >
+                  Scan QR Code
+                </h3>
+
+                {qrCode ? (
+                  <div
+                    className="p-4 rounded-2xl"
+                    style={{ background: 'white' }}
+                  >
+                    <QRCodeSVG
+                      value={qrCode}
+                      size={200}
+                      bgColor="#ffffff"
+                      fgColor="#0a0a0f"
+                      level="M"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-[232px] w-[232px] rounded-2xl border border-dashed border-slate-700 bg-slate-800/30">
+                    <Loader2 className="animate-spin mb-2" size={24} style={{ color: '#f59e0b' }} />
+                    <p className="text-sm text-slate-400">Loading QR...</p>
+                  </div>
+                )}
+
+                <p className="text-xs text-center" style={{ color: '#64748b' }}>
+                  QR code expires in ~60 seconds.
+                </p>
+              </div>
+
+              {/* Pairing Code Section */}
+              <div
+                className="rounded-2xl p-6 flex flex-col justify-center gap-4"
+                style={{
+                  background: 'rgba(15,15,26,0.8)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                }}
+              >
+                <div>
+                  <h3
+                    className="text-lg font-semibold mb-1"
+                    style={{ fontFamily: 'Sora, sans-serif', color: '#e2e8f0' }}
+                  >
+                    Link with Phone Number
+                  </h3>
+                  <p className="text-sm text-slate-400 mb-4">
+                    Alternatively, generate an 8-character code to type into WhatsApp.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    placeholder="Phone number (e.g., 1234567890)"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-amber-500/50"
+                  />
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    disabled={pairingMutation.isPending || !phoneNumber.trim()}
+                    onClick={() => pairingMutation.mutate(phoneNumber)}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
+                    style={{
+                      background: 'rgba(245,158,11,0.1)',
+                      border: '1px solid rgba(245,158,11,0.25)',
+                      color: '#f59e0b',
+                    }}
+                  >
+                    {pairingMutation.isPending ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Smartphone size={16} />
+                    )}
+                    Generate Pairing Code
+                  </motion.button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {!isConnected && pairingCode && (
+            <motion.div
+              key="pairing-code-display"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="rounded-2xl p-8 flex flex-col items-center gap-6"
               style={{
                 background: 'rgba(15,15,26,0.8)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                border: '1px solid rgba(245,158,11,0.3)',
               }}
             >
               <h3
-                className="text-lg font-semibold"
+                className="text-xl font-bold"
                 style={{ fontFamily: 'Sora, sans-serif', color: '#e2e8f0' }}
               >
-                Scan QR Code
+                Your Pairing Code
               </h3>
 
-              <div
-                className="p-4 rounded-2xl"
-                style={{ background: 'white' }}
-              >
-                <QRCodeSVG
-                  value={qrCode}
-                  size={220}
-                  bgColor="#ffffff"
-                  fgColor="#0a0a0f"
-                  level="M"
-                />
+              <div className="flex gap-2 justify-center font-mono text-4xl sm:text-5xl tracking-[0.2em] font-bold py-6 px-8 rounded-xl bg-slate-900 border border-slate-700 text-amber-500">
+                {pairingCode}
               </div>
 
-              <p className="text-sm text-center" style={{ color: '#64748b' }}>
-                QR code expires in ~60 seconds. Refreshes automatically.
-              </p>
+              <div className="text-center space-y-2">
+                <p className="text-sm text-slate-400">
+                  Enter this code in WhatsApp on your phone:
+                </p>
+                <p className="text-sm font-medium text-slate-300">
+                  Settings → Linked Devices → Link a Device → Link with phone number instead
+                </p>
+              </div>
+
+              <button
+                onClick={() => setPairingCode(null)}
+                className="text-sm text-slate-500 hover:text-slate-300 underline underline-offset-4 mt-2"
+              >
+                Go back to QR code
+              </button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -230,7 +350,7 @@ export default function WhatsAppPage() {
                 'Open WhatsApp on your phone',
                 'Tap More Options (⋮) → Linked Devices',
                 'Tap "Link a Device"',
-                'Scan the QR code shown above',
+                'Scan the QR code, OR tap "Link with phone number instead" and enter the pairing code',
                 'Keep your phone connected to the internet',
               ].map((step, i) => (
                 <li key={i} className="flex items-start gap-3 text-sm">

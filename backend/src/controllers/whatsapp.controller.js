@@ -59,6 +59,23 @@ exports.logout = async (req, res, next) => {
 };
 
 /**
+ * POST /api/whatsapp/pairing-code
+ */
+exports.requestPairingCode = async (req, res, next) => {
+  try {
+    const { phoneNumber } = req.body;
+    if (!phoneNumber) {
+      return res.status(400).json({ success: false, message: 'Phone number is required' });
+    }
+    const { requestPairingCode } = require('../services/whatsapp/WhatsAppManager');
+    const code = await requestPairingCode(phoneNumber);
+    res.json({ success: true, code });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * POST /api/whatsapp/send
  * Manually send a message via WhatsApp
  */

@@ -74,6 +74,7 @@ async function createClient() {
     if (connection === 'open') {
       logger.info('✅ WhatsApp connected successfully!');
       reconnectAttempts = 0;
+      waStatus.pairingCode = null; // Clear pairing code on connect
       const phone = sock.user?.id?.split(':')[0] || sock.user?.id?.split('@')[0] || null;
       waStatus = {
         connected: true,
@@ -100,6 +101,7 @@ async function createClient() {
         // Clear auth data on logout
         logger.info('Logged out — clearing session data');
         waStatus.state = 'LOGGED_OUT';
+        waStatus.pairingCode = null;
         try {
           fs.rmSync(AUTH_DIR, { recursive: true, force: true });
         } catch (e) {}
@@ -250,6 +252,29 @@ async function restartWhatsApp() {
   await initWhatsApp();
 }
 
+async function requestPairingCode(phoneNumber) {
+  if (!sock) {
+    throw new Error('WhatsApp client not initialized');
+  }
+  // Sanitize phone number (remove +, spaces, etc)
+  const cleanNumber = phoneNumber.replace(/[^0-9]/g, '');
+  if (!cleanNumber) {
+    throw new Error('Invalid phone number');
+  }
+  
+  logger.info(`Requesting pairing code for ${cleanNumber}...`);
+  // Delay slightly to ensure socket is ready
+  await new Promise(r => setTimeout(r, 1500));
+  const code = await sock.requestPairingCode(cleanNumber);
+  waStatus.pairingCode = code;
+  waStatus.state = 'PAIRING_CODE_READY';
+  
+  if (global.io) {
+    global.io.emit('wa:pairing_code', { code });
+  }
+  return code;
+}
+
 async function logoutWhatsApp() {
   if (sock) {
     try {
@@ -279,4 +304,5 @@ module.exports = {
   getClient,
   restartWhatsApp,
   logoutWhatsApp,
+  requestPairingCode,
 };

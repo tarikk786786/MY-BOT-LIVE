@@ -37,6 +37,7 @@ export const authApi = {
 export const whatsappApi = {
   getStatus: () => api.get('/whatsapp/status'),
   getQR: () => api.get('/whatsapp/qr'),
+  requestPairingCode: (phoneNumber: string) => api.post('/whatsapp/pairing-code', { phoneNumber }),
   restart: () => api.post('/whatsapp/restart'),
   logout: () => api.post('/whatsapp/logout'),
 };
