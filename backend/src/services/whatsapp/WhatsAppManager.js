@@ -1,6 +1,21 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
+const fs = require('fs');
+const path = require('path');
 const logger = require('../../utils/logger');
+
+// Clear stale WA web cache on startup to prevent auth loops
+function clearWWebCache() {
+  const cachePath = path.join(process.cwd(), '.wwebjs_cache');
+  try {
+    if (fs.existsSync(cachePath)) {
+      fs.rmSync(cachePath, { recursive: true, force: true });
+      logger.info('Cleared old .wwebjs_cache');
+    }
+  } catch (e) {
+    logger.warn('Could not clear wwebjs cache:', e.message);
+  }
+}
 
 let client = null;
 let waStatus = {
@@ -174,6 +189,7 @@ async function initWhatsApp() {
       }
       client = null;
     }
+    clearWWebCache();
     createClient();
   } catch (err) {
     logger.error('WhatsApp reinit error:', err);
