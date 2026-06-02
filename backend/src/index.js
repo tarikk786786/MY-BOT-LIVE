@@ -182,30 +182,30 @@ async function connectDB(retries = 5) {
 }
 
 async function start() {
-  try {
-    // 1. Connect to Database FIRST
-    await connectDB();
+  // 1. Start HTTP server FIRST so Render sees the port open immediately
+  server.listen(PORT, () => {
+    logger.info(`🚀 Server running on port ${PORT}`);
+  });
 
-    // 2. Start Express Server
-    server.listen(PORT, () => {
-      logger.info(`🚀 Server running on port ${PORT}`);
-      
-      // 3. Initialize WhatsApp Engine safely
-      setTimeout(() => {
-        try {
-          initWhatsApp();
-        } catch (e) {
-          logger.error('WhatsApp Init Error:', e.message);
-        }
-      }, 2000);
-      
-      // 4. Initialize Keep Alive
-      initKeepAlive();
-    });
+  // 2. Connect to Database
+  try {
+    await connectDB();
   } catch (err) {
-    logger.error('Fatal Startup error:', err);
+    logger.error('Fatal DB error:', err);
     process.exit(1);
   }
+
+  // 3. Initialize WhatsApp after DB is ready (slight delay for stability)
+  setTimeout(() => {
+    try {
+      initWhatsApp();
+    } catch (e) {
+      logger.error('WhatsApp Init Error:', e.message);
+    }
+  }, 3000);
+
+  // 4. Initialize Keep Alive
+  try { initKeepAlive(); } catch (e) { logger.warn('KeepAlive init skip:', e.message); }
 }
 
 // Graceful shutdown

@@ -19,10 +19,6 @@ function createClient() {
     authStrategy: new LocalAuth({
       dataPath: process.env.WA_SESSION_PATH || './sessions',
     }),
-    webVersionCache: {
-      type: 'remote',
-      remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html'
-    },
     puppeteer: {
       headless: true,
       args: [
@@ -32,11 +28,10 @@ function createClient() {
         '--disable-accelerated-2d-canvas',
         '--no-first-run',
         '--no-zygote',
+        '--single-process',
         '--disable-gpu',
         '--disable-extensions',
         '--disable-software-rasterizer',
-        '--disable-background-networking',
-        '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       ],
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     },
